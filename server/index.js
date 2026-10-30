@@ -19,7 +19,7 @@ const rooms = new Map();
 io.on("connection", (socket) => {
   socket.on("join-room", ({ roomId, name }) => {
     if (!roomId || typeof roomId !== "string" || roomId.length > 48) return;
-    const room = rooms.get(roomId) ?? { users: new Map(), playback: { playing: false, time: 0, src: "" } };
+    const room = rooms.get(roomId) ?? { users: new Map(), playback: { playing: false, time: 0, src: "", embedUrl: "" } };
     if (room.users.size >= 2 && !room.users.has(socket.id)) {
       socket.emit("room-full");
       return;
@@ -31,6 +31,17 @@ io.on("connection", (socket) => {
     socket.emit("room-state", { playback: room.playback, peers: [...room.users.entries()].filter(([id]) => id !== socket.id).map(([id, user]) => ({ id, ...user })) });
     socket.to(roomId).emit("peer-joined", { id: socket.id, name: String(name || "Guest").slice(0, 24) });
     io.to(roomId).emit("participants", [...room.users.values()]);
+  });
+
+  socket.on("external-site", ({ embedUrl }) => {
+    const roomId = socket.data.roomId;
+    if (!roomId || !rooms.has(roomId) || typeof embedUrl !== "string") return;
+    let parsed;
+    try { parsed = new URL(embedUrl); } catch { return; }
+    if (!["http:", "https:"].includes(parsed.protocol)) return;
+    const room = rooms.get(roomId);
+    room.playback = { ...room.playback, embedUrl: parsed.href };
+    socket.to(roomId).emit("external-site", { embedUrl: parsed.href });
   });
 
   socket.on("playback", (state) => {

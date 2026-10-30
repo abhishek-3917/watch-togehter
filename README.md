@@ -34,3 +34,7 @@ This app does **not** connect to FMovies or scrape third-party streaming sites. 
 - Use HTTPS (Render provides it) for camera/microphone access.
 - Configure TURN servers for reliable WebRTC across restrictive networks. Set `VITE_TURN_URL`, `VITE_TURN_USERNAME`, and `VITE_TURN_CREDENTIAL` at build time if using a TURN provider.
 - This starter is designed for two participants per room and uses in-memory room state. Add authentication, persistent storage, rate limits, and room expiry before public launch.
+
+## External website iframe test
+
+The room now has an **Embed website** field (pre-filled with `https://1fmovies.us/`). Loading a website broadcasts its URL to the other participant and displays it in an iframe. This is a compatibility test only: the remote site can refuse framing using `X-Frame-Options` or CSP `frame-ancestors`. The app cannot override those headers. Cross-origin iframe navigation and playback controls are not synchronized; only the initial website URL is shared. If the site blocks framing, use a provider-supported embed or another authorized source.

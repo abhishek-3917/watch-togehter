@@ -20,6 +20,8 @@ export default function App() {
   const [name, setName] = useState("You");
   const [joined, setJoined] = useState(false);
   const [videoUrl, setVideoUrl] = useState("");
+  const [embedUrl, setEmbedUrl] = useState("https://1fmovies.us/");
+  const [activeSource, setActiveSource] = useState("video");
   const [chatInput, setChatInput] = useState("");
   const [messages, setMessages] = useState([]);
   const [participants, setParticipants] = useState([]);
@@ -88,12 +90,14 @@ export default function App() {
     const onState = ({ playback, peers }) => {
       setStatus("Connected");
       if (playback?.src) { setVideoUrl(playback.src); if (videoRef.current) videoRef.current.src = playback.src; }
+      if (playback?.embedUrl) { setEmbedUrl(playback.embedUrl); setActiveSource("embed"); }
       if (playback?.time) applyPlayback(playback);
       if (peers?.length) startCall(peers[0].id, true);
     };
     const onFull = () => { setError("This room already has two participants."); setJoined(false); };
     const onPeerJoined = ({ id }) => { startCall(id, false); };
     const onPlayback = applyPlayback;
+    const onExternalSite = ({ embedUrl }) => { setEmbedUrl(embedUrl); setActiveSource("embed"); };
     const onMessage = msg => setMessages(prev => [...prev, msg]);
     const onParticipants = list => setParticipants(list || []);
     const onOffer = async ({ from, description }) => {
@@ -123,6 +127,7 @@ export default function App() {
     socket.on("room-full", onFull);
     socket.on("peer-joined", onPeerJoined);
     socket.on("playback", onPlayback);
+    socket.on("external-site", onExternalSite);
     socket.on("chat-message", onMessage);
     socket.on("participants", onParticipants);
     socket.on("webrtc-offer", onOffer);
@@ -131,7 +136,7 @@ export default function App() {
     socket.on("peer-left", onPeerLeft);
     return () => {
       socket.off("room-state", onState); socket.off("room-full", onFull);
-      socket.off("peer-joined", onPeerJoined); socket.off("playback", onPlayback);
+      socket.off("peer-joined", onPeerJoined); socket.off("playback", onPlayback); socket.off("external-site", onExternalSite);
       socket.off("chat-message", onMessage); socket.off("participants", onParticipants);
       socket.off("webrtc-offer", onOffer); socket.off("webrtc-answer", onAnswer);
       socket.off("webrtc-ice", onIce); socket.off("peer-left", onPeerLeft);
@@ -154,6 +159,17 @@ export default function App() {
     socket.emit("playback", { playing: !videoRef.current.paused, time: videoRef.current.currentTime, src: videoRef.current.currentSrc || videoUrl });
   };
 
+  const loadWebsite = () => {
+    const url = embedUrl.trim();
+    try {
+      const parsed = new URL(url);
+      if (!["http:", "https:"].includes(parsed.protocol)) throw new Error();
+    } catch { return setError("Enter a valid http(s) website URL."); }
+    setError("");
+    setActiveSource("embed");
+    socket.emit("external-site", { embedUrl: url });
+  };
+
   const loadVideo = () => {
     const url = videoUrl.trim();
     if (!url) return;
@@ -162,6 +178,7 @@ export default function App() {
       if (!["http:", "https:"].includes(parsed.protocol)) throw new Error();
     } catch { return setError("Enter a valid http(s) video URL."); }
     setError("");
+    setActiveSource("video");
     if (videoRef.current) { videoRef.current.src = url; videoRef.current.load(); }
     socket.emit("playback", { playing: false, time: 0, src: url });
   };
@@ -223,8 +240,8 @@ export default function App() {
     <div className="workspace">
       <section className="main-column">
         <div className="player-wrap">
-          <video ref={videoRef} controls playsInline onPlay={emitPlayback} onPause={emitPlayback} onSeeked={emitPlayback} onLoadedMetadata={emitPlayback}/>
-          {!videoUrl && <div className="player-empty"><div className="big-play"><Play size={30} fill="currentColor"/></div><h2>Your movie night starts here</h2><p>Add a direct video link below to start watching together.</p></div>}
+          {activeSource === "embed" ? <iframe className="external-frame" src={embedUrl} title="External movie website" allow="autoplay; fullscreen; picture-in-picture" allowFullScreen referrerPolicy="strict-origin-when-cross-origin" /> : <video ref={videoRef} controls playsInline onPlay={emitPlayback} onPause={emitPlayback} onSeeked={emitPlayback} onLoadedMetadata={emitPlayback}/>}
+          {activeSource === "video" && !videoUrl && <div className="player-empty"><div className="big-play"><Play size={30} fill="currentColor"/></div><h2>Your movie night starts here</h2><p>Add a direct video link or load an external website below.</p></div>}
           <div className="call-pip">
             <video ref={remoteRef} autoPlay playsInline className="remote-video"/>
             {!remotePresent && <div className="pip-empty"><Users size={20}/><span>Waiting for partner</span></div>}
@@ -235,7 +252,11 @@ export default function App() {
           <div className="source-input"><Link2 size={17}/><input value={videoUrl} onChange={e => setVideoUrl(e.target.value)} onKeyDown={e => e.key === "Enter" && loadVideo()} placeholder="Paste an authorized MP4 / WebM video URL"/></div>
           <button className="primary" onClick={loadVideo}>Load movie</button>
         </div>
-        <p className="source-note">Use a direct video file URL or an authorized provider embed. Some streaming services block external playback.</p>
+        <div className="source-row">
+          <div className="source-input"><MonitorPlay size={17}/><input value={embedUrl} onChange={e => setEmbedUrl(e.target.value)} onKeyDown={e => e.key === "Enter" && loadWebsite()} placeholder="Website URL to embed"/></div>
+          <button className="secondary embed-button" onClick={loadWebsite}>Embed website</button>
+        </div>
+        <p className="source-note">External websites appear here only if they permit iframe embedding. Their internal navigation and movie playback controls may not synchronize between viewers.</p>
         <div className="call-controls">
           <div className="control-person"><span className="avatar">Y</span><div><b>{name}</b><small>You</small></div></div>
           <div className="control-buttons">
